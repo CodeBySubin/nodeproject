@@ -122,12 +122,18 @@
 const express = require('express');
 const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
 
+// Initialize Express app
 const app = express();
 const port = 3000;
 
 // Replace with your actual Agora App credentials
 const AGORA_APP_ID = 'ebb96245b4d1498c9668fd48865f9024';
 const AGORA_APP_CERTIFICATE = '18475b1178d447eaa54c0d63a2061116';
+
+if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
+  console.error('❌ Missing Agora credentials. Check your AGORA_APP_ID and AGORA_APP_CERTIFICATE.');
+  process.exit(1);
+}
 
 // Middleware
 app.use(express.json());
@@ -137,35 +143,65 @@ app.get('/hello', (req, res) => {
   res.json({ message: 'Hello from Agora Token Server' });
 });
 
-// Agora Token Generator Endpoint
+// Token generator route
 app.get('/rtc/:channel/:role/:uid', (req, res) => {
   const channelName = req.params.channel;
-  const uid = parseInt(req.params.uid);
-  const roleString = req.params.role;
+  const uidParam = req.params.uid;
+  const roleParam = req.params.role;
 
-  const role =
-    roleString === 'publisher'
-      ? RtcRole.PUBLISHER
-      : RtcRole.SUBSCRIBER;
+  // ✅ Validate channel name
+  if (!channelName || typeof channelName !== 'string') {
+    return res.status(400).json({ error: 'Invalid or missing channel name' });
+  }
 
-  const expirationTimeInSeconds = 3600;
+  // ✅ Validate UID
+  const uid = parseInt(uidParam, 10);
+  if (isNaN(uid)) {
+    return res.status(400).json({ error: 'UID must be a number' });
+  }
+
+  // ✅ Validate role
+  let role;
+  if (roleParam === 'publisher') {
+    role = RtcRole.PUBLISHER;
+  } else if (roleParam === 'subscriber') {
+    role = RtcRole.SUBSCRIBER;
+  } else {
+    return res.status(400).json({ error: 'Role must be "publisher" or "subscriber"' });
+  }
+
+  // ✅ Set expiration (1 hour)
+  const expirationInSeconds = 3600;
   const currentTimestamp = Math.floor(Date.now() / 1000);
-  const privilegeExpireTs = currentTimestamp + expirationTimeInSeconds;
+  const privilegeExpireTs = currentTimestamp + expirationInSeconds;
 
-  const token = RtcTokenBuilder.buildTokenWithUid(
-    AGORA_APP_ID,
-    AGORA_APP_CERTIFICATE,
-    channelName,
-    uid,
-    role,
-    privilegeExpireTs
-  );
+  try {
+    // 🔐 Generate token
+    const token = RtcTokenBuilder.buildTokenWithUid(
+      AGORA_APP_ID,
+      AGORA_APP_CERTIFICATE,
+      channelName,
+      uid,
+      role,
+      privilegeExpireTs
+    );
 
-  res.json({ token });
+    // 🧾 Log for debugging
+    console.log(`✅ Token generated:
+    ├─ Channel: ${channelName}
+    ├─ UID: ${uid}
+    ├─ Role: ${roleParam}
+    └─ Expires at: ${new Date(privilegeExpireTs * 1000).toLocaleTimeString()}
+    `);
+
+    res.json({ token });
+  } catch (err) {
+    console.error('💥 Error generating token:', err);
+    res.status(500).json({ error: 'Internal server error while generating token' });
+  }
 });
 
-
-// Start server
+// Start the server
 app.listen(port, () => {
-  console.log(`✅ Agora Token Server running at http://localhost:${port}`);
+  console.log(`🚀 Agora Token Server running at http://localhost:${port}`);
 });
