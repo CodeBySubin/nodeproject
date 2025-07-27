@@ -132,6 +132,7 @@ const AGORA_APP_CERTIFICATE = '18475b1178d447eaa54c0d63a2061116';
 app.use(cors());
 app.use(express.json());
 
+
 // ✅ Firebase Admin SDK initialization
 const serviceAccount = require('./serviceAccountKey.json');
 admin.initializeApp({
