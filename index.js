@@ -117,30 +117,37 @@
 //    });
 
 /////////////commented top code for another apis its right now for chat app//////////////////
-
-// Import dependencies
 const express = require('express');
 const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
-
+const admin = require('firebase-admin');
+const cors = require('cors');
 const app = express();
 const port = 3000;
 
-// Replace with your actual Agora App credentials
+// Replace with your Agora credentials
 const AGORA_APP_ID = 'ebb96245b4d1498c9668fd48865f9024';
 const AGORA_APP_CERTIFICATE = '18475b1178d447eaa54c0d63a2061116';
 
 // Middleware
+app.use(cors());
 app.use(express.json());
 
-// Test route
-app.get('/hello', (req, res) => {
-  res.json({ message: 'Hello from Agora Token Server' });
+// ✅ Firebase Admin SDK initialization
+const serviceAccount = require('./serviceAccountKey.json');
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+const messaging = admin.messaging();
+
+// 🔹 Test route
+app.get('/', (req, res) => {
+  res.json({ message: '✅ Backend is working' });
 });
 
-// Agora Token Generator Endpoint
+// 🔹 Generate Agora token
 app.get('/rtc/:channel/:role/:uid', (req, res) => {
   const channelName = req.params.channel;
-  const uid = parseInt(req.params.uid);
+  const uid = parseInt(req.params.uid, 10);
   const roleString = req.params.role;
 
   const role =
@@ -164,8 +171,103 @@ app.get('/rtc/:channel/:role/:uid', (req, res) => {
   res.json({ token });
 });
 
+// 🔹 Send Push Notification (Call Alert)
+app.post('/push', async (req, res) => {
+  const { fcmToken, channel, agoraToken, callerName, callerHandle, uid } = req.body;
 
-// Start server
-app.listen(port, () => {
-  console.log(`✅ Agora Token Server running at http://localhost:${port}`);
+  if (!fcmToken || !channel || !agoraToken || !uid) {
+    return res.status(400).json({ error: 'Required fields missing' });
+  }
+
+  const message = {
+    token: fcmToken,
+    android: {
+      priority: 'high',
+      notification: {
+        title: callerName || 'Incoming Call',
+        body: `${callerName || 'Someone'} is calling...`,
+      },
+    },
+    apns: {
+      headers: {
+        'apns-priority': '10',
+        'apns-push-type': 'voip',
+      },
+    },
+    data: {
+      type: 'call',
+      channel,
+      agoraToken,
+      callerName: callerName || 'Caller',
+      callerHandle: callerHandle || '',
+      uid: uid.toString(),
+    },
+  };
+
+  try {
+    const response = await messaging.send(message);
+    console.log('✅ FCM sent:', response);
+    res.json({ success: true, response });
+  } catch (err) {
+    console.error('❌ FCM send error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
+
+// 🔹 Start server
+app.listen(port, () => {
+  console.log(`🚀 Server is running at http://localhost:${port}`);
+});
+
+
+/////////////////////////////old agora code//////////////////////
+// const express = require('express');
+// const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
+
+// const app = express();
+// const port = 3000;
+
+// // Replace with your actual Agora App credentials
+// const AGORA_APP_ID = 'ebb96245b4d1498c9668fd48865f9024';
+// const AGORA_APP_CERTIFICATE = '18475b1178d447eaa54c0d63a2061116';
+
+// // Middleware
+// app.use(express.json());
+
+// // Test route
+// app.get('/hello', (req, res) => {
+//   res.json({ message: 'Hello from Agora Token Server' });
+// });
+
+// // Agora Token Generator Endpoint
+// app.get('/rtc/:channel/:role/:uid', (req, res) => {
+//   const channelName = req.params.channel;
+//   const uid = parseInt(req.params.uid);
+//   const roleString = req.params.role;
+
+//   const role =
+//     roleString === 'publisher'
+//       ? RtcRole.PUBLISHER
+//       : RtcRole.SUBSCRIBER;
+
+//   const expirationTimeInSeconds = 3600;
+//   const currentTimestamp = Math.floor(Date.now() / 1000);
+//   const privilegeExpireTs = currentTimestamp + expirationTimeInSeconds;
+
+//   const token = RtcTokenBuilder.buildTokenWithUid(
+//     AGORA_APP_ID,
+//     AGORA_APP_CERTIFICATE,
+//     channelName,
+//     uid,
+//     role,
+//     privilegeExpireTs
+//   );
+
+//   res.json({ token });
+// });
+
+
+// // Start server
+// app.listen(port, () => {
+//   console.log(`✅ Agora Token Server running at http://localhost:${port}`);
+// });
